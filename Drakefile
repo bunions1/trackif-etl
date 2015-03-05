@@ -1,0 +1,107 @@
+
+;;; Heartbleed-vulnerable IP addresses
+
+;; Download the raw heartbleed ip data.
+https-full.20140505T1214.json.gz <- [-timecheck]
+  curl -O https://scans.io/data/umich/heartbleed-public/https-full/https-full.20140505T1214.json.gz
+
+;; Select the IP addresses that are heartbleed-vulnerable.
+heartbleed_ips.txt <- https-full.20140505T1214.json.gz
+  gzcat $INPUT \
+  | jq 'select(.tls_handshake.ServerHelloMsg.heartbleed_vulnerable) | .host' \
+  > $OUTPUT
+
+;; Remove any duplicates.
+heartbleed_ips_unique.txt <- heartbleed_ips.txt
+  sort $INPUT | uniq > $OUTPUT
+
+;; Create a postgres db.
+database.dummy <- [-timecheck]
+  psql postgres -c 'create database trackif'
+  touch $OUTPUT
+
+;; Create the heartbleed_ips table, and load.
+heartbleed_table.dummy <- heartbleed_ips_unique.txt
+  psql trackif -c 'drop table heartbleed_ips'
+  psql trackif -c 'create table heartbleed_ips (ip inet)'
+  cat $INPUT | psql trackif -c 'copy heartbleed_ips from stdin with csv'
+  touch $OUTPUT
+
+
+;;; City populations
+
+;; Download the city population data.
+cities15000.zip <- [-timecheck]
+  curl -O http://download.geonames.org/export/dump/cities15000.zip
+
+; cities15000.zip has the following tab-delimited fields:
+; 1  geonameid
+; 2  name
+; 3  asciiname
+; 4  alternatenames
+; 5  latitude
+; 6  longitude
+; 7  feature class
+; 8  feature code
+; 9  country code
+; 10 cc2
+; 11 admin1 code
+; 12 admin2 code
+; 13 admin3 code
+; 14 admin4 code
+; 15 population
+; 16 elevation
+; 17 dem
+; 18 timezone
+; 19 modification date
+;
+; For this exercise, we'll use name (2), asciiname (3), alternatenames (4),
+;  country code (9), admin1 code (11), and population (15).
+
+;; Load into postgres
+city_pop_table.dummy <- database.dummy, cities15000.zip
+  psql trackif -c 'drop table city_pop'
+  psql trackif -c 'create table city_pop (
+    name text,
+    asciiname text,
+    alternatenames text,
+    country text,
+    regioncode text,
+    population int
+  )'
+  unzip -p cities15000 | csvcut -t -c 2,3,4,9,11,15 \
+    | psql trackif -c 'copy city_pop from stdin with csv'
+  touch $OUTPUT
+
+;;; City admin codes
+
+;; Download the admin1 codes map.
+; Sample row:
+;  AD.06   Sant Julià de Loria     Sant Julia de Loria     3039162
+
+
+admin1CodesASCII.txt <- [-timecheck]
+  curl -O http://download.geonames.org/export/dump/admin1CodesASCII.txt
+
+
+;;; City IP ranges
+
+;; Download the city ip range data.
+ip_city.csv.gz <- [-timecheck]
+  curl -o $OUTPUT http://download.db-ip.com/free/dbip-city-2015-02.csv.gz
+
+
+;; Create the ip_city table and load the city ip range data
+ip_city_table.dummy <- database.dummy, ip_city.csv.gz
+  psql trackif -c 'drop table ip_city'
+  psql trackif -c 'create table ip_city(
+    startip inet,
+    endip inet,
+    city text,
+    region text,
+    country text
+  )'
+  gzcat ip_city.csv.gz \
+  | psql trackif -c 'copy ip_city(startip, endip, country, region, city)
+                     from stdin with csv'
+  touch $OUTPUT

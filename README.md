@@ -48,7 +48,7 @@ This dataset provides the mapping from ip address to a geographical name. This d
 
 #####Raw Heartbleed Data
 
-This file is very large (88G) and contains a json document per line. We take advantage of postgresql's json support by impoting into a table with a single column of type json.
+This file is very large (88G) and contains a json document per line. We take advantage of postgresql's json support by importing into a table with a single column of type json.
 We configure the quote and delimiter to be characters that cannot appear in json. Later on we can extract fields in the json document using Postgresql's ->> and #> json operators.
 
 	CREATE TABLE raw_heartbleed_data (data json);
@@ -151,7 +151,7 @@ We can allow joining with a simple mapping table
 
 ###Final query
 
-	SELECT (COUNT(*) / population::float) as vuln_per_capita, COUNT(*) as vuln_ip_count, 
+	SELECT (COUNT(*)::float / population::float) as vuln_per_capita, COUNT(*) as vuln_ip_count, 
 		region,
 		city,
 		population 
@@ -176,3 +176,28 @@ vuln_per_capita       | vuln_ip_count |    region    |     city      | populatio
   0.00169503400238209 |          2250 | Texas        | San Antonio   | 1327407
    0.0005247047197419 |           686 | California   | San Diego     | 1307402
  0.000909154661483901 |          1089 | Texas        | Dallas        | 1197816
+
+
+
+
+
+
+###Further Steps
+
+These process presented here represents a good approach for a one off quick analysis, however many improvements 
+can be made to make the process repeatable, automated and more efficient. One good tool for this is Drake https://github.com/Factual/drake.
+Drake is essential make for data. You establish a series of steps and their dependencies. If you need to modify 
+something at one step you can then easily recompute the rest of the process. 
+
+With this approach you can use tools like 
+* jq http://stedolan.github.io/jq/ 
+* csvkit https://github.com/onyxfish/csvkit
+
+
+to extract only the data you need before importing it into the database.
+
+Another approach would be using some big data tools to speed up the process. I have found spark http://spark.apache.org/ to be a big help here. 
+You get the benefit of hadoop style mapreduce, but with a much simplier api that can string together multiple complex steps. Amazon EMR has good
+support for spark now so if you can get your data into s3 its simple to throw an arbitrary sized cluster at your data.
+
+
