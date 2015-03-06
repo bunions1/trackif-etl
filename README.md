@@ -7,7 +7,7 @@ most populous cities where population is provided by the geonames databse.
 
 ###Approach
 
-Our approach is to import all 3 datasets into postgres where they can be queryied with standard sql techniques.
+Our approach is to import all 3 datasets into postgres where they can be queried with standard sql techniques.
 
 ###Aquire Data
 
@@ -31,11 +31,11 @@ We used an Amazon RDS postgres instance which can be connected to with:
 
 ###Import raw data tables
 
-For each of 3 data files we downloaded, we imported the data into staging tables. We use varchar as the prefered datatype for all columns. 
+For each of 3 data files we downloaded, we imported the data into staging tables. We use varchar as the preferred datatype for all columns. 
 We can munge data and convert to more specific types in a later step.
 
 
-#####First raw_ip_city table
+#####raw_ip_city table - dbip-city-2015-02.csv.gz
 
 This dataset provides the mapping from ip address to a geographical name. This datafile is a simple csv file we can import with the copy command from psql
 
@@ -46,10 +46,10 @@ This dataset provides the mapping from ip address to a geographical name. This d
 		   city VARCHAR);
 	\COPY raw_ip_city FROM 'dbip-city-2015-02.csv' WITH CSV;
 
-#####Raw Heartbleed Data
+#####Raw Heartbleed Data - https-full-20140424T1025.json.gz
 
 This file is very large (88G) and contains a json document per line. We take advantage of postgresql's json support by importing into a table with a single column of type json.
-We configure the quote and delimiter to be characters that cannot appear in json. Later on we can extract fields in the json document using Postgresql's ->> and #> json operators.
+We configure the quote and delimiter of psql's COPY command to be characters that cannot appear in json. Later on we can extract fields in the json document using Postgresql's ->> and #> json operators.
 
 	CREATE TABLE raw_heartbleed_data (data json);
 	\COPY raw_heartbleed_data FROM 'https-full-20140424T1025.json' WITH CSV QUOTE e'\x01' DELIMITER e'\x02';
@@ -69,9 +69,9 @@ We end up with a table of ip_addresses where presence in the table represents vu
 		FROM raw_heartbleed_data 
 		WHERE data#>>'{tls_handshake, ServerHelloMsg, heartbleed_vulnerable}' = 'true';
 
-######Raw city population data - cities15000.txt
+#####  Raw city population data - cities15000.txt
 
-This dataset provides the population value each city. This is a tab delimited file with many columns, we care about asciiname, admin1_code (state code) and population, but first we will import everything into a staging table.
+This dataset provides the population value for each city. This is a tab delimited file with many columns, we care about asciiname, admin1_code (state code) and population, but first we will import everything into a staging table.
 
 	CREATE TABLE raw_cities_pop(
 							   fgeonameid      INTEGER PRIMARY KEY,
@@ -151,6 +151,12 @@ We can allow joining with a simple mapping table
 
 ###Final query
 
+This final query returns the results we want. For each heartbleed ip address, we find which city/state
+it corresponds to based on the ip range. We use the state (region) and city to look up the population record
+in the population table. An intermediate table allows us to map from the full state name to the state abbreviation
+Finally we count the number of records in the result set for each city. Dividing the count by population gives 
+you the per capita number.
+
 	SELECT (COUNT(*)::float / population::float) as vuln_per_capita, COUNT(*) as vuln_ip_count, 
 		region,
 		city,
@@ -186,7 +192,7 @@ vuln_per_capita       | vuln_ip_count |    region    |     city      | populatio
 
 These process presented here represents a good approach for a one off quick analysis, however many improvements 
 can be made to make the process repeatable, automated and more efficient. One good tool for this is Drake https://github.com/Factual/drake.
-Drake is essential make for data. You establish a series of steps and their dependencies. If you need to modify 
+Drake is essentially make for data. You establish a series of steps and their dependencies. If you need to modify 
 something at one step you can then easily recompute the rest of the process. 
 
 With this approach you can use tools like 
